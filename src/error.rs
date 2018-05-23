@@ -1,4 +1,5 @@
 use std;
+use reqwest;
 use thrift_codec;
 use trackable::error::ErrorKindExt;
 
@@ -21,4 +22,8 @@ pub fn from_thrift_error(f: thrift_codec::Error) -> Error {
         thrift_codec::ErrorKind::InvalidInput => ErrorKind::InvalidInput.cause(f).into(),
         thrift_codec::ErrorKind::Other => ErrorKind::Other.cause(f).into(),
     }
+}
+
+pub fn from_reqwest_error(f: reqwest::Error) -> Error {
+    ErrorKind::Other.cause(f).into()
 }

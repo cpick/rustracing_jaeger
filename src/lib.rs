@@ -31,10 +31,12 @@
 #![warn(missing_docs)]
 extern crate hostname;
 extern crate rand;
+extern crate reqwest;
 extern crate rustracing;
 extern crate thrift_codec;
 #[macro_use]
 extern crate trackable;
+extern crate url;
 
 pub use rustracing::{Error, ErrorKind, Result};
 pub use span::Span;
