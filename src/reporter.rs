@@ -119,7 +119,6 @@ impl JaegerBinaryReporter {
 /// POST payload.
 #[derive(Debug)]
 pub struct JaegerHttpReporter {
-    client: Client,
     url: Url,
     batcher: JaegerBatcher,
 }
@@ -128,16 +127,13 @@ impl JaegerHttpReporter {
     ///
     /// # Errors
     ///
-    /// Cannot currently fail, but reservers the right to do so in the future
-    /// (eg if more proactive/aggressive connection pooling is used in the future).
+    /// Cannot currently fail, but reservers the right to do so in the future.
     pub fn new(service_name: &str) -> Result<Self> {
-        let client = Client::new();
         let batcher = JaegerBatcher::new(service_name);
         let url = "http://127.0.0.1:14268/api/traces?format=jaeger.thrift"
             .parse()
             .expect("failed to parse default URL");
         Ok(JaegerHttpReporter{
-            client,
             url,
             batcher,
         })
@@ -167,7 +163,7 @@ impl JaegerHttpReporter {
         self.batcher.add_service_tag(tag);
     }
 
-    /// Reports `spans`.
+    /// Reports `spans` using the provided `client`.
     ///
     /// # Errors
     ///
@@ -176,13 +172,13 @@ impl JaegerHttpReporter {
     ///
     /// If it fails to send the encoded binary to the jaeger collector via HTTP,
     /// this method will return an error which has the kind `ErrorKind::Other`.
-    pub fn report(&self, spans: &[FinishedSpan]) -> Result<()> {
+    pub fn report(&self, client: &Client, spans: &[FinishedSpan]) -> Result<()> {
         let batch = self.batcher.batch(spans,);
         let mut bytes = Vec::new();
         track!(Struct::from(batch,).binary_encode(&mut bytes,)
                     .map_err(error::from_thrift_error,))?;
         let mut response = track!(
-            self.client
+            client
                 .post(self.url.clone(),)
                 .body(bytes,)
                 .send()
