@@ -29,6 +29,7 @@
 //! ```
 
 #![warn(missing_docs)]
+extern crate futures;
 extern crate hostname;
 extern crate rand;
 extern crate reqwest;

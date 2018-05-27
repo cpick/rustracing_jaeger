@@ -2,8 +2,9 @@
 //!
 //! [jaeger agent]: http://jaeger.readthedocs.io/en/latest/deployment/#agent
 use std::net::{SocketAddr, UdpSocket};
+use futures::future::{result, Future};
 use hostname;
-use reqwest::Client;
+use reqwest::{Client, unstable::async};
 use rustracing::tag::Tag;
 use thrift_codec::{BinaryEncode, CompactEncode};
 use thrift_codec::data::Struct;
@@ -11,7 +12,7 @@ use thrift_codec::message::Message;
 use trackable::error::ErrorKindExt;
 use url::{HostAndPort, Url};
 
-use {Result, ErrorKind};
+use {Error, Result, ErrorKind};
 use constants;
 use error;
 use span::FinishedSpan;
@@ -193,6 +194,44 @@ impl JaegerHttpReporter {
                 response.text().unwrap_or_default()
             )).into())
         }
+    }
+
+    /// Reports `spans` using the provided `client`.
+    /// NB: The request is not actually sent until the returned `Future` is executed.
+    ///
+    /// # Errors
+    ///
+    /// If it fails to encode `spans` to the thrift binary format (i.e., a bug of this crate),
+    /// this method will return an error which has the kind `ErrorKind::InvalidInput`.
+    ///
+    /// If it fails to send the encoded binary to the jaeger collector via HTTP,
+    /// this method will return an error which has the kind `ErrorKind::Other`.
+    pub fn report_async(&self, client: &async::Client, spans: &[FinishedSpan]) -> impl Future<Item = (), Error = Error> {
+        let batch = self.batcher.batch(spans,);
+        let mut bytes = Vec::new();
+        result(track!(
+            Struct::from(batch,)
+                .binary_encode(&mut bytes,)
+                .map_err(error::from_thrift_error,)
+        ))
+        .join(
+            client
+                .post(self.url.clone(),)
+                .body(bytes,)
+                .send()
+                .map_err(error::from_reqwest_error,)
+                .and_then(move |response| {
+                    if response.status().is_success() {
+                        Ok(())
+                    } else {
+                        track!(Err(ErrorKind::Other.cause(format!(
+                            "failed to POST spans to collector with response status: '{}'",
+                            response.status(),
+                        )).into()))
+                    }
+                })
+        )
+        .map(|_| ())
     }
 }
 
